@@ -4,34 +4,64 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"net/http"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
 )
 
 func main() {
 	var host string
 	var port int
+	var counts int
 	var remoteHost string
 	var remotePort int
 
 	flag.StringVar(&host, "host", "127.0.0.1", "host for source")
 	flag.IntVar(&port, "port", 10000, "port for source")
+	flag.IntVar(&counts, "counts", 10, "count of connections")
 	flag.StringVar(&remoteHost, "remoteHost", "127.0.0.1", "host for remote")
 	flag.IntVar(&remotePort, "remotePort", 8080, "port for remote")
-	flag.Parse()	
+	flag.Parse()
 
-	fmt.Printf("debug: local=%v:%v, remote=%v:%v\n", host, port, remoteHost, remotePort)
+	rand.Seed(time.Now().UTC().UnixNano())
 
 	addr := net.TCPAddr{IP: net.ParseIP(host), Port: port}
+
+	wg := sync.WaitGroup{}
+
+	for idx := range counts {
+		wg.Add(idx)
+		go doCheck(addr, host, port, remoteHost, remotePort+idx)
+	}
+
+	wg.Wait()
+}
+
+func doCheck(addr net.TCPAddr, host string, port int, remoteHost string, remotePort int) {
+	ping := genPing()
+	fmt.Printf("debug: local=%v:%v, remote=%v:%v, debug=%v\n", host, port, remoteHost, remotePort, ping)
 
 	client := http.Client{
 		Transport: &http.Transport{
 			DialContext: (&net.Dialer{
 				LocalAddr: &addr,
+				Control: func(network, address string, c syscall.RawConn) error {
+					return c.Control(func(fd uintptr) {
+						err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+						if err != nil {
+							fmt.Printf("Error setting SO_REUSEPORT: %v\n", err)
+						}
+					})
+				},
 			}).DialContext,
 		},
 	}
-	resp, err := client.Get(fmt.Sprintf("http://%v:%v", remoteHost, remotePort))
+	resp, err := client.Get(fmt.Sprintf("http://%v:%v?ping=%v", remoteHost, remotePort, ping))
 	if err != nil {
 		panic(fmt.Errorf("when exeute request caused error: %v", err))
 	}
@@ -43,5 +73,14 @@ func main() {
 		panic(fmt.Errorf("when parse data caused error: %v", err))
 	}
 
-	fmt.Printf("body: %v\n", string(data))
+	fmt.Printf("remote=%v:%v body: %v\n", remoteHost, remotePort, process(data))
+
+}
+
+func genPing() string {
+	return strconv.Itoa(rand.Int())
+}
+
+func process(data []byte) string {
+	return strings.Trim(string(data), "\n")
 }
