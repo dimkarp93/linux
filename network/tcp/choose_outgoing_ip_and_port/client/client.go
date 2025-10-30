@@ -12,6 +12,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func main() {
@@ -32,17 +34,17 @@ func main() {
 
 	addr := net.TCPAddr{IP: net.ParseIP(host), Port: port}
 
-	wg := sync.WaitGroup{}
+	var wg sync.WaitGroup
 
 	for idx := range counts {
-		wg.Add(idx)
-		go doCheck(addr, host, port, remoteHost, remotePort+idx)
+		wg.Add(1)
+		go doCheck(&wg, addr, host, port, remoteHost, remotePort+idx)
 	}
 
 	wg.Wait()
 }
 
-func doCheck(addr net.TCPAddr, host string, port int, remoteHost string, remotePort int) {
+func doCheck(wg *sync.WaitGroup, addr net.TCPAddr, host string, port int, remoteHost string, remotePort int) {
 	ping := genPing()
 	fmt.Printf("debug: local=%v:%v, remote=%v:%v, debug=%v\n", host, port, remoteHost, remotePort, ping)
 
@@ -52,7 +54,14 @@ func doCheck(addr net.TCPAddr, host string, port int, remoteHost string, remoteP
 				LocalAddr: &addr,
 				Control: func(network, address string, c syscall.RawConn) error {
 					return c.Control(func(fd uintptr) {
-						err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+						var err error
+						
+						err = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+						if err != nil {
+							fmt.Printf("Error setting SO_REUSEPORT: %v\n", err)
+						}
+
+						err = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, unix.SO_REUSEPORT, 1)
 						if err != nil {
 							fmt.Printf("Error setting SO_REUSEPORT: %v\n", err)
 						}
@@ -74,7 +83,7 @@ func doCheck(addr net.TCPAddr, host string, port int, remoteHost string, remoteP
 	}
 
 	fmt.Printf("remote=%v:%v body: %v\n", remoteHost, remotePort, process(data))
-
+	wg.Done()
 }
 
 func genPing() string {
