@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -33,16 +32,7 @@ func main() {
 
 func doBind(host string, port int) {
 	fmt.Printf("debug: host=%v, port=%v\n", host, port)
-	lc := net.ListenConfig{
-		Control: func(network, address string, c syscall.RawConn) error {
-			return c.Control(func(fd uintptr) {
-				err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
-				if err != nil {
-					fmt.Printf("Error setting SO_REUSEPORT: %v\n", err)
-				}
-			})
-		},
-	}
+	lc := net.ListenConfig{}
 	listener, err := lc.Listen(context.Background(), "tcp4", fmt.Sprintf("%v:%v", host, port))
 	if err != nil {
 		panic(fmt.Errorf("cannot listen port: %v", err))
