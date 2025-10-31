@@ -26,11 +26,8 @@ func main() {
 		go doBind(host, port + idx)
 	}
 
-	for {
-		select {
-		case <-time.Tick(time.Duration(5) * time.Second):
-			fmt.Println("Wait...")
-		}
+	for range time.Tick(time.Duration(5) * time.Second) {
+		fmt.Println("Wait...")
 	}
 }
 
