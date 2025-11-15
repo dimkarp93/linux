@@ -1,0 +1,29 @@
+build:
+    go build -o leak leak.go 
+
+build-docker: build
+    docker build -t oom-leak .
+
+full NAME PROC MEM SLEEP LIMIT="0": build-docker
+    docker run --name "oom-leak-{{NAME}}" -m 4g --memory-swap 0g --cpus 4 -d oom-leak -proc {{PROC}} -mem {{MEM}} -sleep {{SLEEP}} -max-iter {{LIMIT}}
+
+start NAME PROC MEM SLEEP LIMIT="0":
+    docker run --name "oom-leak-{{NAME}}" -m 4g --memory-swap 0g --cpus 4 -d oom-leak /app/leak -proc {{PROC}} -mem {{MEM}} -sleep {{SLEEP}} -max-iter {{LIMIT}}
+
+usage:
+    docker stats --no-stream
+
+monitor:
+    docker stats
+
+running:
+    docker ps -f name=oom-leak
+
+all:
+    docker ps -a -f name=oom-leak
+
+stop:
+    docker ps -q -f name=oom-leak | xargs docker stop
+
+rm:
+    docker ps -a -q -f name=oom-leak | xargs docker rm -fv
